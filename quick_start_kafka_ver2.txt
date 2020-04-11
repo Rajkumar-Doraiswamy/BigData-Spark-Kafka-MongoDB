@@ -1,0 +1,511 @@
+## Last amended: 27th August, 2019
+
+
+## Quick-start kafka
+## Ref: 
+#	1. https://kafka.apache.org/quickstart
+
+
+# Step 0: 
+
+#    Clear last session's  files, if any, as root
+
+# 	As there are two kafkas hosted
+#  	We need to delete some files in /tmp 
+#     Copy and paste, ONE COMMAND AT A TIME, in terminal
+
+sudo rm -rf  /tmp/zookeeper
+sudo rm -rf  /tmp/kafka-logs*
+
+# Step 1.
+
+#         Login as user 'ashok '
+#         Delete earlier kafka session related files
+#         Copy and paste all following commands in one go:
+
+
+		    cd ~
+                    rm -f /opt/kafka_2.11-2.0.0/logs/*
+                    rm -rf /tmp/zookeeper
+                    rm -rf /tmp/kafka-logs*
+                    rm -rf /tmp/confluent*
+                    rm -rf /tmp/ksql*
+                    rm  ~/useless.txt
+                    rm -f /home/ashok/confluent-5.0.0/log/*logs*  
+		    cd ~/
+
+
+# 1.1 Bring in correct .bashrc file:
+#        For lubuntu_spark:
+#	   There will be three .bashrc files:
+
+#		i)	.bashrc_confluent  => Only for Confluent
+#		ii)	.bashrc_kafka		=> Only for kafka
+#		iii)	.bashrc_copy    		=> Copy of original
+
+
+#    Copy all the four commands
+#    and paste in terminal
+#    Your machine will reboot.
+
+
+cd ~
+mv /home/ashok/.bashrc   /home/ashok/bashrc.real
+cp /home/ashok/.bashrc_kafka  /home/ashok/.bashrc
+reboot
+
+
+Part I: Understanding Kafka
+===========================
+
+Experiment 1: Single broker
+===========================
+
+# Step 2:
+
+#   Start the zookeeper server
+
+# Kafka uses ZooKeeper so you need to first start a ZooKeeper server
+#  You can use the convenience script packaged with kafka to get
+#    a quick-and-dirty single-node ZooKeeper instance.
+
+         zookeeper-server-start.sh  /opt/kafka_2.11-2.0.0/config/zookeeper.properties
+
+        (1. INFO Error may get generated on console. Do not worry.
+         2. You can have a look at zookeeper.properties, as:
+            leafpad  /opt/kafka_2.11-2.0.0/config/zookeeper.properties
+        )
+
+# Step 3: 
+
+#             Next start the Kafka server/broker in another terminal:
+
+       kafka-server-start.sh  /opt/kafka_2.11-2.0.0/config/server.properties
+
+         (You can have a look at zookeeper.properties, as:
+         leafpad  /opt/kafka_2.11-2.0.0/config/server.properties
+          )
+
+
+# Step 4:
+
+#    Create a topic in another terminal
+#    Let's create a topic named "test" with a single partition and only one replica:
+
+          kafka-topics.sh    \
+                                      --create  \
+                                      --zookeeper localhost:2181  \
+                                      --replication-factor 1               \
+                                      --partitions 1                              \
+                                      --topic test
+
+
+# Step 5:
+
+#     We can now see that topic, 'test', if we run the list topic command:
+
+          kafka-topics.sh                       \
+                                        --list                \
+                                        --zookeeper localhost:2181
+
+
+# Step 6:
+
+#  Send/produce some messages
+#  Kafka comes with a command line client that will take input from a file or
+#  from standard input and send it out as messages to the Kafka cluster.
+#   By default, each line will be sent as a separate message.
+#    Run the producer and then type a few messages into the console to send to the server.
+
+           kafka-console-producer.sh                                                           \
+                                                                    --broker-list localhost:9092  \
+                                                                    --topic test
+
+
+# Step 7: 
+
+#  Start a consumer in another terminal:
+
+#  Kafka also has a command line consumer that will dump out messages to standard output.
+#    If you have each of the above commands running in a different terminal then you should
+#     now be able to type messages into the producer terminal and see them appear in the consumer terminal.
+
+          kafka-console-consumer.sh         \
+                                                            --bootstrap-server localhost:9092   \
+                                                            --topic test          \
+                                                            --from-beginning
+
+
+ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pageviews --from-beginning
+ kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pageviews_enriched  --from-beginning
+
+
+Experiment 2: Multi broker
+===========================
+
+Keep the above processes alive and working. Do not kill them.
+
+# Step 8: 
+
+#    We will set-up multi-broker cluster
+#    So far we have been running against a single broker, but that's no fun. 
+#    For Kafka, a single broker is just a cluster of size one, so nothing much
+#    changes other than starting a few more broker instances. But just to get feel 
+#    for it, let's expand our cluster to three nodes (still all on our local machine).
+#    First we make a config file for each of the brokers 
+
+cp /opt/kafka_2.11-2.0.0/config/server.properties /opt/kafka_2.11-2.0.0/config/server-1.properties
+cp /opt/kafka_2.11-2.0.0/config/server.properties /opt/kafka_2.11-2.0.0/config/server-2.properties
+
+#    Now edit TWO new configuration files and set the following properties (wherever these occur):
+
+# 8.1:
+
+	leafpad  /opt/kafka_2.11-2.0.0/config/server-1.properties
+
+broker.id=1						line 21
+listeners=PLAINTEXT://:9093	 	line 31
+log.dirs=/tmp/kafka-logs-1		line 60	
+
+# 8.2
+
+	leafpad  /opt/kafka_2.11-2.0.0/config/server-2.properties
+
+broker.id=2						line 21
+listeners=PLAINTEXT://:9094	        line 31
+log.dirs=/tmp/kafka-logs-2		line 60	
+
+
+#  The broker.id property is the unique and permanent name of each node in the cluster.
+#   We have to override the port and log directory only because we are running these
+#    all on the same machine and we want to keep the brokers from all trying to register
+#     on the same port or overwrite each other's data.
+
+
+# 8.3 We already have Zookeeper and our single node started, 
+#         so we just need to start the two new nodes:
+
+     # 8.3.1 Same terminal:
+
+      kafka-server-start.sh  /opt/kafka_2.11-2.0.0/config/server-1.properties &
+
+     # 8.3.2 Same terminal:
+
+      kafka-server-start.sh  /opt/kafka_2.11-2.0.0/config/server-2.properties &
+
+# 8.4 Now create an additional new topic ('test' already exists). 
+#         This topic will have a replication factor of three:
+
+
+	# 8.4.1
+
+      kafka-topics.sh \
+                                        --create                                             \
+                                        --zookeeper   localhost:2181  \
+                                       --replication-factor 3   \
+                                        --partitions 1                                \
+                                       --topic my-replicated-topic
+
+
+	# 8.4.2
+
+      kafka-topics.sh              \
+                                 --list         \
+                                 --zookeeper localhost:2181
+
+
+# 8.5 Okay but now that we have a cluster how can we know which broker is doing what?/
+#     To see that run the "describe topics" command:
+
+      kafka-topics.sh                      \
+                                   --describe     \
+                                   --zookeeper localhost:2181  \
+                                   --topic my-replicated-topic
+
+
+     WHAT IF LEADER IS ZERO? WHAT HAPPENS TO #9 BELOW
+
+# Here is an explanation of output. The first line gives a summary of all the partitions,
+#   each additional line gives information about one partition. Since we have only one partition
+#   for this topic there is only one line.
+
+    i) "leader" is node responsible for all reads & writes for given partition. 
+         Each node will be leader for a randomly selected portion of the partitions.
+    ii)  "replicas" is the list of nodes that replicate the log for this partition 
+           regardless of whether they are the leader or even if they are currently alive.
+    iii) "isr" is the set of "in-sync" replicas. This is the subset of the replicas 
+           list that is currently alive and caught-up to the leader. 
+
+# Note that in this example node 1 is the leader for the only partition of the topic.
+
+# 8.6 We can run the same command on the original topic we created to see where it is:
+
+     kafka-topics.sh   \
+                              --describe     \
+                              --zookeeper localhost:2181 \
+                              --topic test
+
+
+# So there is no surprise there—the original topic has no replicas and is on server 0,
+#  the only server in our cluster when we created it.
+
+# 9   Let's publish a few messages to our new topic:
+
+     WHAT IF LEADER IS ZERO? WHAT HAPPENS TO #9 BELOW
+
+    kafka-console-producer.sh    \
+                                              --broker-list localhost:9092   \
+                                              --topic my-replicated-topic
+
+# 9.1 Now let's consume these messages:
+
+     
+
+kafka-console-consumer.sh    \
+                                 --bootstrap-server localhost:9092   \
+                                 --from-beginning           \
+                                 --topic my-replicated-topic
+
+# 9.2 Now let's test out fault-tolerance. Broker 1 was acting as the leader so let's kill it:
+
+    ps aux | grep server-1.properties
+
+    BUT WHAT IF LEADER IS ZERO? ACT AS PER BELOW
+
+	ps aux | grep server.properties
+
+7564 ttys002    0:15.91 /System/Library/Frameworks/JavaVM.framework/Versions/1.8/Home/bin/java...
+kill -9 7564
+
+# 9.3 Leadership has switched to one of the slaves and node 1 is no longer in the in-sync replica set:
+#      And the messages are still available for consumption even though the leader that took the writes
+#       originally is down:
+
+kafka-topics.sh    \
+                             --describe         \
+                             --zookeeper localhost:2181   \
+                             --topic my-replicated-topic
+
+
+Part II: 
+========
+Use Kafka Connect to import data from text file
+and export it to another text file
+=========================================
+
+# 1
+Kill all existing processes with ctrl-c and 
+
+And use this also:
+
+        ps aux | grep server.properties
+        ps aux | grep server-1.properties
+        ps aux | grep server-2.properties
+
+       reboot machine.
+
+
+
+# 2
+
+cd ~
+rm -f /opt/kafka_2.11-2.0.0/logs/*
+rm -rf /tmp/zookeeper
+rm -rf /tmp/kafka-logs*
+rm -rf /tmp/zookeeper
+rm -rf /tmp/kafka-logs*
+rm -rf /tmp/confluent*
+rm -rf /tmp/confluent*
+rm -rf /tmp/ksql*
+
+rm  ~/useless.txt
+rm ~/test.sink.txt
+touch ~/test.sink.txt
+cat /home/ashok/Documents/spark/streaming/3.kafka_spark_streaming/data/car.data > /home/ashok/test.txt
+
+# Step 1: 
+#       Start zookeeper and kafka servers
+
+# 1.1   Start in one terminal
+
+            zookeeper-server-start.sh /opt/kafka_2.11-2.0.0/config/zookeeper.properties
+
+# 1.2  Start in another terminal
+
+            kafka-server-start.sh /opt/kafka_2.11-2.0.0/config/server.properties
+
+# 1.3 examine data file in home folder. Issue command in another  terminal.
+
+             cat /home/ashok/test.txt
+
+
+# Step 2
+#    Specify source and sink connectors:
+#	We'll start two connectors running in standalone mode, which means they run in a single,
+#	local, dedicated process.
+#       We provide three configuration files as parameters.
+
+#       Common first: 
+#       The first is always the configuration for the Kafka Connect process, containing common configuration
+#	  such as the Kafka brokers to connect to and the serialization format for data for both the
+#       connectors.
+
+#       Source and Sink:
+#       The remaining configuration files each specify a connector to create. These files include a unique connector
+#       name, the connector class to instantiate, and any other configuration required by the connector.
+#       These files are on the pattern of Flume properties (sources and sinks) conf file.
+
+connect-standalone.sh  /opt/kafka_2.11-2.0.0/config/connect-standalone.properties  /opt/kafka_2.11-2.0.0/config/connect-file-source.properties    /opt/kafka_2.11-2.0.0/config/connect-file-sink.properties
+
+#  These sample configuration files, included with Kafka, use default local cluster configuration you started
+#   earlier & create two connectors: the first is a source connector that reads lines from an input file &
+#   produces each to a Kafka topic and the second is a sink connector that reads messages from a Kafka topic
+#    and produces each as a line in an output file.
+
+# connect-file-source.properties
+# Helps to configure kafka to directly read data from a file
+
+	name=local-file-source                    			# Unique connector name
+	connector.class=FileStreamSource          	# Connector class to instantiate
+	tasks.max=1                               				# Other required arguments to above class
+	file=/home/ashok/test.txt
+	topic=connect-test
+
+# connect-file-sink.properties
+# Helps to configure kafka to directly dump data to a file
+
+	name=local-file-sink
+	connector.class=FileStreamSink
+	tasks.max=1
+	file=/home/ashok/test.sink.txt
+	topics=connect-test
+
+# Step 3
+# During startup you'll see a number of log messages, including some indicating that the connectors are being
+#  instantiated. Once the Kafka Connect process has started, the source connector should start reading lines
+#   from test.txt and producing them to the topic connect-test, and the sink connector should start reading
+#    messages from the topic connect-test and write them to the file test.sink.txt. We can verify the data has
+#     been delivered through the entire pipeline by examining the contents of the output file: 
+
+        cat test.sink.txt
+
+# Note that both test.txt and test.sink.txt are in home folder.
+
+# Step 4:
+# Note also that the data is being stored in the Kafka topic connect-test, so we can also run a console consumer
+#  to see the data in the topic (or use custom consumer code to process it):
+
+kafka-topics.sh --describe --zookeeper localhost:2181 --topic connect-test
+
+kafka-console-consumer.sh  --bootstrap-server  localhost:9092  --topic connect-test  --from-beginning
+
+# Step 5:
+# The connectors continue to process data, so we can add data to the file and see it move through the pipeline:
+#  You should see the line appear in the console consumer output and in the sink file.
+
+        echo "Adding another line: TRASH TRASH" >> test.txt
+
+## END OF PART II
+
+PART III
+========
+Use Kafka Streams to process data
+=================================
+
+# Kafka Streams is a client library of Kafka for real-time stream processing and analyzing
+#  data stored in Kafka brokers. This quickstart example will demonstrate how to run a streaming
+#    application coded in this library. Here is the gist of the WordCountDemo example code
+#     (converted to use Java 8 lambda expressions for easy reading).
+
+
+# 1
+Kill all existing processes with ctrl-c and 
+reboot machine.
+
+# 2
+rm -f /opt/kafka_2.11-1.0.1/logs/*
+rm -rf /tmp/zookeeper
+rm -rf /tmp/kafka-logs*
+
+
+# Step 1: Start zookeeper and kafka servers
+
+# 1.1
+zookeeper-server-start.sh /opt/kafka_2.11-2.0.0/config/zookeeper.properties
+
+# 1.2
+kafka-server-start.sh /opt/kafka_2.11-2.0.0/config/server.properties
+
+# 2.
+#  As the first step, we will prepare input data to a Kafka topic, which will subsequently
+#    be processed by a Kafka Streams application. 
+
+echo -e "all streams lead to kafka\nhello kafka streams\njoin kafka summit" > file-input.txt
+
+# 3.
+#  Next, we send this input data to the input topic named streams-file-input using the
+#   console producer, which reads the data from STDIN line-by-line, and publishes each
+#    line as a separate Kafka message with null key and value encoded a string to the topic
+#     (in practice, stream data will likely be flowing continuously into Kafka where the
+#      application will be up and running): 
+
+# 3.1
+kafka-topics.sh --create \
+    --zookeeper localhost:2181 \
+    --replication-factor 1 \
+    --partitions 1 \
+    --topic streams-file-input
+
+# 3.2	
+kafka-console-producer.sh --broker-list localhost:9092 --topic streams-file-input < file-input.txt
+
+# 3.3
+
+kafka-console-producer.sh --broker-list localhost:9092 --topic streams-file-input 
+
+# 4. We can now run the WordCount demo application to process the input data: 
+
+kafka-run-class.sh org.apache.kafka.streams.examples.wordcount.WordCountDemo
+
+#  The demo application will read from the input topic streams-file-input,
+#   perform the computations of the WordCount algorithm on each of the read
+#    messages, and continuously write its current results to the output topic
+#    streams-wordcount-output. Hence there won't be any STDOUT output except
+#     log entries as the results are written back into in Kafka. The demo will
+#      run for a few seconds and then, unlike typical stream processing applications,
+#       terminate automatically. 
+
+
+# 5. We can now inspect the output of the WordCount demo application by reading from its output topic: 
+
+kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+    --topic streams-wordcount-output \
+    --from-beginning \
+    --formatter kafka.tools.DefaultMessageFormatter \
+    --property print.key=true \
+    --property print.value=true \
+    --property key.deserializer=org.apache.kafka.common.serialization.StringDeserializer \
+    --property value.deserializer=org.apache.kafka.common.serialization.LongDeserializer
+
+
+
+# With the following output data being printed to the console:
+
+1 all     1
+2 lead    1
+3 to      1
+4 hello   1
+5 streams 2
+6 join    1
+7 kafka   3
+8 summit  1
+
+# Here, the first column is the Kafka message key in java.lang.String format,
+#  and the second column is the message value in java.lang.Long format. Note 
+#   that the output is actually a continuous stream of updates, where each data
+#    record (i.e. each line in the original output above) is an updated count of
+#     a single word, aka record key such as "kafka". For multiple records with the
+#     same key, each later record is an update of the previous one. 
+
+
+

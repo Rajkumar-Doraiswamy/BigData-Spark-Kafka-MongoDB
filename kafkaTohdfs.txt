@@ -1,0 +1,123 @@
+# Last amended: 28th August, 2019
+# Myfolder: /home/ashok/Documents/confluent
+# Ref: https://docs.confluent.io/current/connect/connect-hdfs/docs/index.html
+
+# Objective:
+#            To start confluent and dump kafka output into hdfs
+#            instead of stdout or file on a local filesystem
+
+
+#  NOTE:  You need to install hdfs connector for confluent-5.3.0, as:
+
+#       	confluent-hub install confluentinc/kafka-connect-hdfs:latest
+#  			Say 'y' to all questions
+
+
+Steps:
+
+	
+	1. Start hadoop+yarn, as:
+		$ ./allstart.sh
+
+	2. In hdfs create two folders /topics and /logs, as:
+
+	   cd ~
+	   hdfs dfs -rm -r /topics
+	   hdfs dfs -mkdir /topics
+	   hdfs dfs -rm -r /logs
+	   hdfs dfs -mkdir /logs
+
+	3. Start confluent, as:
+
+		confluent local start
+
+	4. Issue command to start the Avro console producer
+	     to import a few records to Kafka. A console producer
+	     takes inputs from console. It also creates a topic 'test_hdfs'
+
+		kafka-avro-console-producer  --broker-list localhost:9092  --topic  test_hdfs \
+--property value.schema='{"type":"record","name":"myrecord","fields":[{"name":"f1","type":"string"}]}'
+
+	    The terminal does not close. Start writing, line-by-line, the 
+	    following, records:
+	
+
+		{"f1": "value1"}
+		{"f1": "value2"}
+		{"f1": "value3"}
+
+	Note key must remian as "f1" and it must be followed by colon (:).
+
+
+	5. The three records entered are published to the Kafka topic test_hdfs in Avro format.
+	     You can check that this topic exits, as:
+
+		kafka-topics   --list  --zookeeper  localhost:2181
+
+	6. On another terminal, issue command to load hdfs connector:
+
+	 confluent local load hdfs-sink -- -d /home/ashok/confluent-5.3.0/share/confluent-hub-components/confluentinc-kafka-connect-hdfs/etc/quickstart-hdfs.properties
+
+
+	7. To check that the connector started successfully view the Connect worker’s log by running:
+
+		 confluent local log connect | more
+
+
+	8. Towards the end of the log you should see that the connector starts, logs a few messages,
+	     and then exports data from Kafka to HDFS. Once the connector finishes ingesting data to HDFS,
+             check that the data is available in HDFS:
+
+		hdfs dfs -ls /topics/test_hdfs/partition=0
+
+	    You should see a file with name /topics/test_hdfs/partition=0/test_hdfs+0+0000000000+0000000002.avro 
+            The file name is encoded as topic+kafkaPartition+startOffset+endOffset.format.
+
+	9. Copy this file to local filesystem and read it, as:
+
+		$ hdfs dfs -copyToLocal /topics/test_hdfs/partition=0/test_hdfs+0+0000000000+0000000002.avro /home/ashok/test_hdfs+0+0000000000+0000000002.avro
+
+		$ java -jar avro-tools-1.8.2.jar tojson test_hdfs+0+0000000000+0000000002.avro
+
+	10. You should see the following output:
+
+		{"f1":"value1"}
+		{"f1":"value2"}
+		{"f1":"value3"}
+
+	11. Finally, stop the Confluent and destroy all data:
+
+		$ confluent local stop
+		$ confluent local destroy
+
+	12. Or stop all the services and additionally wipe out any data generated during this quick start by running:
+
+		$ confluent local destroy
+
+
+################################
+
+What is Avro?
+
+Apache Avro is a language-neutral data serialization system.
+It was developed by Doug Cutting, the father of Hadoop. Since
+Hadoop writable classes lack language portability, Avro becomes 
+quite helpful, as it deals with data formats that can be processed
+by multiple languages. Avro is a preferred tool to serialize data
+in Hadoop.
+
+Avro has a schema-based system. A language-independent schema is
+associated with its read and write operations. Avro serializes the
+data which has a built-in schema. Avro serializes the data into a 
+compact binary format, which can be deserialized by any application.
+
+Avro uses JSON format to declare the data structures. Presently, 
+it supports languages such as Java, C, C++, C#, Python, and Ruby.
+
+###################################
+
+
+	
+
+
+

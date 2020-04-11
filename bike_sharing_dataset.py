@@ -1,0 +1,403 @@
+# Last amended: 13th October, 2018
+# My folder: /home/ashok/Documents/spark/bike_sharing_dataset
+
+
+# Ref: https://docs.databricks.com/spark/latest/mllib/decision-trees.html#gbt-regression-using-mllib-pipelines
+
+"""
+Analyzing a bike sharing dataset
+================================
+Objective
+----------
+To demonstrate creating an ML Pipeline to preprocess
+a dataset, train a Machine Learning model, and make
+predictions.
+
+Data:
+-----
+The dataset contains bike rental info from
+2011 and 2012 in the Capital bikeshare system, plus
+additional relevant information such as weather.
+This dataset is from Fanaee-T and Gama (2013) and
+is hosted by the UCI Machine Learning Repository.
+
+Goal:
+------
+We want to learn to predict bike rental
+counts (per hour) from information such as day of
+the week, weather, season, etc. Having good
+predictions of customer demand allows a business or
+service to prepare and increase supply as needed.
+
+Approach:
+----------
+ We will use Spark ML Pipelines, which help
+users piece together parts of a workflow such as
+feature processing and model training. We will also
+demonstrate model selection (a.k.a. hyperparameter
+tuning) using Cross Validation in order to fine-tune
+and improve our ML model.
+
+
+
+"""
+
+# 1.0 Start hadoop
+
+$ ./allstart.sh
+
+# 1.1 Transfer datafiles from local filesystem to hadoop filesystem
+
+$ hdfs dfs -put /cdata/bike_sharing_dataset/hour.csv hdfs://localhost:9000/user/ashok/data_files
+$ hdfs dfs -ls  hdfs://localhost:9000/user/ashok/data_files
+
+
+# 1.2 Start pyspark
+
+$ pyspark
+
+
+
+# 2. Load and understand the data
+#    Load our data, which is stored in (CSV) format.
+#    For that, we use the CSV datasource for Spark,
+#    which creates a Spark DataFrame containing the dataset.
+
+#  'format': specifies the Spark CSV data source
+#  'header': set to true to indicate that the first
+#            line of the CSV data file is a header
+
+#      spark.read.csv(URL_of_file + "airports.csv", inferSchema = True, header = True)
+# OR,
+df = spark.read.format('csv').option("header", 'true').load("hdfs://localhost:9000/user/ashok/data_files/hour.csv")
+
+
+##################### AA. Explore data #######################
+
+# 2.1 We also cache the data so that we only read it from disk once.
+
+df.cache()
+
+# 2.2
+
+df.show(3)
+
+# 2.3 How many rows?
+
+df.count()
+
+# 3. The dataset has three target/label columns:
+#	Label columns:
+#		    casual: count of casual users
+#		    registered: count of registered users
+#		    cnt: count of total rental bikes including both casual and registered
+#                (in fact cnt has some very direct relationship with casual and registered)
+#    We will concern ourselves with only 'cnt'. Also drop 'dteday' columns (ie date columns)
+
+# 3.1
+
+df.columns
+
+# 3.2  Note that earlier df is being 'overwritten'
+#         instant: Merely serial number
+#        dteday: Date in the form: 2011-01-03
+#                In a sep col, 2011, is coded as 0 and 2012 as 1
+#			     All other date related inf is available in other cols.
+#			     So drop this column
+
+df = df.drop("instant").drop("dteday").drop("casual").drop("registered")
+
+# 3.3 Show database structure
+
+df.columns
+df.printSchema()
+
+
+# 4.  Cast all columns using Spark SQL to a numeric type (DoubleType).
+#      Ref:  http://spark.apache.org/docs/2.1.0/api/python/pyspark.sql.html#module-pyspark.sql.functions
+
+# 4.1 Call necessary libraries
+
+# 4.1.1 col() returns a Column based on a given
+#            column name
+from pyspark.sql.functions import col
+
+# 4.1.2 Import class 'DoubleType' that represents double
+#       data type
+from pyspark.sql.types import DoubleType
+
+
+# 4.2 Casting an individual column:
+#        withColumn()  returns a new DataFrame by adding a
+#        column or replacing the existing column that has the
+#        same name. So here, we replace:
+
+df = df.withColumn("cnt", col("cnt").cast(DoubleType()))
+
+# OR,
+
+df = df.withColumn("cnt", df["cnt"].cast(DoubleType()))
+
+
+# 4.3 Casting multiple columns
+
+for l in df.columns:
+    df = df.withColumn(l, col(l).cast(DoubleType()))
+
+
+#  4.4 See Schema of our dataset
+
+df.printSchema()
+
+
+# 5. Split the dataset randomly into 70% for
+#    training and 30% for testing.
+
+train, test = df.randomSplit([0.7, 0.3])
+
+# 5.1
+
+train.count()/df.count()
+test.count()/df.count()
+
+
+################### BB. Process data  #######################
+
+
+# 6.
+# VectorAssembler: This concatenates all feature columns,
+#                  whatever type,  into a single feature vector
+#                  in a new column "rawFeatures".
+
+"""
+Ref: https://spark.apache.org/docs/latest/ml-features.html#vectorassembler
+VectorAssembler
+Also see:
+https://stackoverflow.com/questions/38236389/understanding-output-of-vectorassembler-spark
+
+VectorAssembler is a transformer that combines a given
+list of columns into a single vector column. It is useful
+for combining raw features and features generated by
+different feature transformers into a single feature vector,
+in order to train ML models like logistic regression and
+decision trees. VectorAssembler accepts the following input
+column types: all numeric types, boolean type, and vector type.
+In each row, the values of the input columns will be
+concatenated into a vector in the specified order.
+
+Examples
+
+Assume that we have a DataFrame with the columns
+id, hour, mobile, userFeatures, and clicked:
+
+ id | hour | mobile | userFeatures     | clicked
+----|----------|-------------|---------------------------|---------
+ 0  | 18       | 1.0         | [0.0, 10.0, 0.5]     | 1.0
+
+
+
+userFeatures is a vector column that contains three user features.
+We want to combine hour, mobile, and userFeatures into a
+single feature vector called features and use it to predict
+clicked or not. If we set VectorAssembler’s input columns to
+ hour, mobile, and userFeatures and output column to features,
+after transformation we should get the following DataFrame:
+
+ id | hour | mobile | userFeatures        | clicked | features
+----|----------|-------- ---- |----------------------------|-------------|--------------------------------------
+ 0  | 18      | 1.0           | [0.0, 10.0, 0.5]      | 1.0          | [18.0, 1.0, 0.0, 10.0, 0.5]
+
+
+"""
+
+
+# 6.1 Import VectorAssembler
+
+from pyspark.ml.feature import VectorAssembler
+
+
+# 6.2
+
+featuresCols = df.columns
+
+# 6.3 Get only predictors
+
+featuresCols.remove('cnt')
+
+
+# 6.4   Create an instance of VectorAssembler class.
+#          This object will be used to transfrom data farme,
+#           as: vectorassembler.fit(df)
+
+vectorassembler = VectorAssembler(
+                                  inputCols=featuresCols,
+                                  outputCol="rawFeatures"
+                                 )
+
+# 6.5 Just have a look at the output:
+output = vectorassembler.transform(train)
+output.show(3)
+
+# 7. VectorIndexer
+
+"""
+Ref: https://spark.apache.org/docs/latest/ml-features.html#vectorindexer
+VectorIndexer
+
+VectorIndexer helps index categorical features in datasets of Vectors.
+It can both automatically decide which features are categorical and
+convert original values to category indices. Specifically,
+it does the following:
+
+    Take an input column of type Vector and a parameter maxCategories.
+    Decide which features should be categorical based on the number
+    of distinct values, where features with at most maxCategories
+    are declared categorical.
+
+    Compute 0-based category indices for each categorical feature.
+    Index categorical features and transform original feature values
+    to indices.
+
+    Features with at most 'maxCategories' are declared categorical.
+
+Indexing categorical features allows algorithms such as Decision Trees
+and Tree Ensembles to treat categorical features appropriately, improving
+performance.
+
+"""
+
+"""
+Ref:  https://stackoverflow.com/questions/44195535/what-is-stringindexer-vectorindexer-and-how-to-use-them
+
+StringIndexer vs VectorIndexer
+
+	String Indexer - Use it if you want the ML algorithm
+	 to identify column as categorical variable or if want
+	to convert the textual data to numeric data keeping
+	the categorical context. For example, converting
+	 days(Monday, Tuesday...) to numeric representation.
+
+	Vector Indexer- use this if we do not know the types of
+	data incoming. so we leave the logic of differentiating
+	between categorical and non categorical data to the
+	algorithm using Vector Indexer.
+	e,g - Data coming from 3rd Party API, where data is hidden
+	and is ingested directly to the training model.
+
+"""
+
+# 7.1
+
+from pyspark.ml.feature import VectorIndexer
+
+# 7.2 This identifies categorical features and indexes them.
+#         Instantiate the object first
+
+vectorindexer = VectorIndexer(inputCol="rawFeatures",
+                              outputCol="features",
+                              maxCategories=4
+                              )
+
+
+
+################### CC. Perform Modeling  #####################
+
+
+# 8. Call gradient boosting regression and other libraries
+
+from pyspark.ml import Pipeline
+from pyspark.ml.regression import GBTRegressor
+from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
+from pyspark.ml.evaluation import RegressionEvaluator
+import time
+
+
+
+## Instantiating Objects
+# 9.1 Instantiate the rgressor object
+#     Takes the "features" column and learns to predict "cnt"
+
+gbt = GBTRegressor(labelCol="cnt")
+
+
+
+# 9.2 Define and build grid of parameters
+
+paramGrid = ParamGridBuilder()\
+  .addGrid(gbt.maxDepth, [2, 5])\
+  .addGrid(gbt.maxIter, [10, 100])\
+  .build()
+
+
+# 9.3 Instantiate evaluator object
+#     We are performing cross validation
+#     Results of prediction are made on held-back data
+#     during cross-validation
+#     Given a fitted gbt object, it
+
+evaluator = RegressionEvaluator(
+                                metricName="rmse",
+                                labelCol=gbt.getLabelCol(),  # Actual col value
+                                predictionCol=gbt.getPredictionCol() # predicted col value
+                                )
+
+
+# 9.4 Create CV object:
+
+cv = CrossValidator(estimator=gbt,
+                    evaluator=evaluator,
+                    estimatorParamMaps=paramGrid
+                    )
+
+
+# 9.5 Instantiate pipeline objects
+
+pipeline = Pipeline(stages=[vectorassembler, vectorindexer, cv])
+
+
+
+# 10. Run the pipeline. This will run complete pipe
+#     including transform() methods of vectorassembler & vectorindexer
+#     but transform() method of cv is not run. For cv,
+#     it is just modeling and fitting; no transformation.
+#    CONSUMES LOTS OF MEMORY. THINGS MAY SLOW DOWN
+#    OR CONNECTIONS MAY BREAK
+
+start = time.time()
+pipelineModel = pipeline.fit(train)
+end = time.time()
+(end - start)/60           # Takes 15 minutes
+
+
+
+############# DD. Predictions & evaluation  ######################
+
+# 10.1 Make predictions on test data using best model
+
+predictions = pipelineModel.transform(test)
+
+
+# 10.2 Show all columns including predicted column
+
+predictions.select("cnt", "prediction", *featuresCols).show()
+type(predictions)               # Spark Dataframe
+
+# 10.3 Evaluate results
+# Ref: http://spark.apache.org/docs/2.2.0/api/python/pyspark.ml.html#pyspark.ml.evaluation.RegressionEvaluator
+
+# Create evaluator object.  class is, as:
+#  RegressionEvaluator(self, predictionCol="prediction", labelCol="label", metricName="rmse")
+
+# 10.4
+eval = RegressionEvaluator(predictionCol="prediction",
+                           labelCol = 'cnt',
+                           metricName="rmse"
+                           )
+
+# 10.5
+rmse = eval.evaluate(predictions)
+
+# 10.6
+print ("RMSE on our test set: %g" % rmse)
+
+########################### FINISH #######################

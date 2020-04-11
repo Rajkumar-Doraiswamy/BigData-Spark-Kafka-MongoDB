@@ -1,0 +1,225 @@
+# Last amended: 24/10/2018
+# My folder: /home/ashok/Documents/spark/streaming/spark-kafka
+#
+# Ref: https://databricks.com/blog/2017/04/26/processing-data-in-apache-kafka-with-structured-streaming-in-apache-spark-2-2.html
+# Ref: https://spark.apache.org/docs/2.2.0/structured-streaming-kafka-integration.html#deploying
+#
+
+
+### Objective:
+#					Demonstrate Kafka-spark streaming
+#					Spark reads data from a kafka stream
+#					and feeds to another kafka stream
+
+
+#******************************************************************************
+# MEMORY BEING A LIMITATION AVOID RUSHING TO NEXT STEP. WAIT TO STABILISE.
+#******************************************************************************
+
+## Proceed as follows in steps:
+
+
+
+#         FIRST DELETE earlier kafka session related files
+
+                    cd ~
+                    rm -rf /tmp/zookeeper
+                    rm -rf /tmp/kafka-logs*
+                    rm -rf /tmp/confluent*
+                    rm -rf /tmp/ksql*
+                    rm   /home/ashok/test.sink.txt
+                   touch /home/ashok/test.sink.txt
+                    rm -rf /opt/kafka_2.11-2.0.0/logs/
+
+
+
+
+####### Step 1 ############ Start kafka and begin streaming ##############
+
+## 1.0 Open a termnal. Start zookeeper & kafka broker
+
+# 1.1 Starting zookeeper
+
+cd ~
+zookeeper-server-start.sh   /opt/confluent-5.0.0/etc/kafka/zookeeper.properties  
+
+# 1.2 Open another terminal . Start kafka server/broker:
+
+cd ~
+kafka-server-start.sh  /opt/confluent-5.0.0/etc/kafka/server.properties
+
+
+# 1.2.1 Check if any topic exists? None should.
+
+kafka-topics.sh --list --zookeeper localhost:2181
+
+
+#  1.3     Specify source connector and sink connectors:
+#	         We'll start two connectors running in standalone mode, 
+#              which means they run in a single, 
+#              Create a topic and also dump stream output to a file in home folder:
+
+# 1.3.1  Configure first kafka file-source properties:
+
+                  $  leafpad /opt/confluent-5.0.0/etc/kafka/connect-file-source.properties
+
+# Amend the above file properties as follows, then save it and close it
+
+	name=local-file-source                                    # Unique connector name. Do not change
+	connector.class=FileStreamSource          # Connector class to instantiate. Do not change
+	tasks.max=1                                                           # Other required arguments to above class. Do not change
+	file=/home/ashok/Documents/spark/data/1.csv      # Source from where to read
+	topic=test                                     				# Topic to be created. Can have any name
+
+# 1.3.2 Configure first file-sink properties:
+
+                $ leafpad  /opt/confluent-5.0.0/etc/kafka/connect-file-sink.properties
+
+# Amend the file properties as follows, then save it and close it
+
+	name=local-file-sink                                    # No change
+	connector.class=FileStreamSink          # No change
+	tasks.max=1                                                     # No change
+	file=/home/ashok/test.sink.txt             # Where the sink is
+	topics=test                                                        # Which topic to read from
+
+
+# 1.4 Open a terminal. Create topic and start reading from a file and pipeline it to a file:
+
+cd ~
+connect-standalone.sh /opt/confluent-5.0.0/etc/kafka/connect-standalone.properties /opt/confluent-5.0.0/etc/kafka/connect-file-source.properties /opt/confluent-5.0.0/etc/kafka/connect-file-sink.properties
+
+
+# 1.5 Open another terminal and check if topic, test,  is created:
+
+kafka-topics.sh --list --zookeeper localhost:2181
+
+####### Step 2 ######### Create  file from to which kafka will connect (source data) ##############
+
+# 2.0  Open another Generate data in file: 1.csv
+
+cd /home/ashok/Documents/spark/streaming/spark-kafka
+bash singlefile_gen.sh
+cd ~
+
+### Step 3 ###### Start pyspark, read stream from the topic 'test' and redirect stream another topic 'mytopic' ########
+
+# 3.0  Open another window.
+#         Start pyspark as follows. This first downloads spark libraries and then starts pyspark:
+
+cd ~
+pyspark --packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.3.1
+
+# 4.0 After pyspark has started, begin as follows:
+
+# 4.1 Call libraries
+
+#  4.1.1 Library to generate Spark context
+#             whether local  or on hadoop
+
+from pyspark.context import SparkContext
+
+# 4.1.2  Library to generate SparkSession
+from pyspark.sql.session import SparkSession
+
+# 4.2 Connect to kafka and read stream in batch mode
+
+df = spark \
+  .read \
+  .format("kafka") \
+  .option("kafka.bootstrap.servers", "localhost:9092") \
+  .option("subscribe", "test") \
+  .load()
+
+
+# 4.3 Print schema
+
+df.printSchema()
+
+# 4.4 Show value
+
+df.selectExpr("CAST(value AS STRING)").show()
+
+# 4.5  Create a topic 'mytopic'  on a separate terminal:
+
+kafka-topics.sh  --create  --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic mytopic
+
+
+# WAIT TILL NEXT STEP
+
+# 4.6 Write key-value data from a DataFrame to Kafka using a topic specified in the data
+
+df.selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")  \
+  .write   \
+  .format("kafka")  \
+  .option("kafka.bootstrap.servers", "localhost:9092")  \
+  .option("topic", "mytopic")   \
+  .save()
+
+
+# 4.7 Read 'mytopic' using kafka consumer process:
+
+$  kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic mytopic --from-beginning
+
+
+####################################################################
+# TODO
+####################################################################
+
+
+df = spark \
+  .readStream \
+  .format("kafka") \
+  .option("kafka.bootstrap.servers", "localhost:9092") \
+  .option("subscribe", "test") \
+  .load()
+
+
+
+
+ds = df  \
+  .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)") \
+  .writeStream \
+  .format("kafka") \
+  .option("checkpointLocation", "checkpoint")   \
+  .option("kafka.bootstrap.servers", "localhost:9092") \
+  .option("topic", "mytopic") \
+  .start()
+
+
+# Let's create a topic named "test" with a single partition and only one replica:
+
+          kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic mytopic
+ 
+
+ds = df \
+  .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)") \
+  .writeStream \
+  .format("kafka") \
+  .option("kafka.bootstrap.servers", "localhost:9092") \
+  .option("topic", "mytopic") \
+  .start()
+
+
+
+ds = df \
+  .selectExpr("mytopic", "CAST(key AS STRING)", "CAST(value AS STRING)") \
+  .writeStream \
+  .format("kafka") \
+  .option("kafka.bootstrap.servers", "localhost:9092") \
+  .start()
+
+
+ 
+
+df = spark \
+  .read \
+  .format("kafka") \
+  .option("kafka.bootstrap.servers", "localhost:9092") \
+  .option("subscribe", "test") \
+  .load()
+
+
+
+
+
