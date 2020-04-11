@@ -1,0 +1,339 @@
+# Last amended: 11th July, 2019
+# My folder: /home/ashok/Documents/spark/streaming/4.stream_invoice_data
+# Works for spark: 2.4.3
+# VM: lubuntu_spark.vdi
+
+# Ref: https://aseigneurin.github.io/2018/08/14/kafka-tutorial-8-spark-structured-streaming.html
+# Ref: https://dzone.com/articles/basic-example-for-spark-structured-streaming-amp-k
+# Ref: https://databricks.com/blog/2017/04/26/processing-data-in-apache-kafka-with-structured-streaming-in-apache-spark-2-2.html
+
+
+### Objectives:
+#					i)   Demonstrate Kafka-spark streaming
+#					ii)  Use of batch-mode streaming for debugging
+#					iii) Spark continuous streaming
+#					iv) Joining stream data with offline (static) data
+#					 v) Using kafkacat to directly publish data in kafka
+#					vi) Manipulating invoice data
+
+
+#******************************************************************************
+# MEMORY BEING A LIMITATION AVOID RUSHING TO NEXT STEP. WAIT TO STABILISE.
+#******************************************************************************
+
+## Proceed as follows in steps:
+
+# 1.0 Install kafkacat if not installed
+
+#    sudo apt-get install kafkacat
+
+
+
+#  2.0     FIRST DELETE earlier kafka session related files
+                Copy all lines and paste in console
+
+cd ~
+rm -rf /tmp/zookeeper
+rm -rf /tmp/kafka-logs*
+rm -rf /tmp/confluent*
+rm -rf /tmp/ksql*
+rm   /home/ashok/test.sink.txt
+rm /home/ashok/Documents/spark/data/invoice.csv
+touch /home/ashok/test.sink.txt
+rm -rf /opt/kafka_2.11-2.0.0/logs/
+
+
+# 2.1 Start hadoop 
+
+./allstart.sh
+
+
+####### Step 1 ############ Start kafka and begin streaming ##############
+
+## 3.0 Open a termnal. Start zookeeper & kafka broker
+
+# 3.1 Starting zookeeper
+
+cd ~
+zookeeper-server-start.sh   /opt/confluent-5.0.0/etc/kafka/zookeeper.properties  
+
+# 3.2 Open another terminal . Start kafka server/broker:
+
+cd ~
+kafka-server-start.sh  /opt/confluent-5.0.0/etc/kafka/server.properties
+
+
+# 3.3 Check if any topic exists? None should.
+
+kafka-topics.sh --list --zookeeper localhost:2181
+
+
+# 3.4  Create topic 'invoice'
+
+kafka-topics.sh  --create   --zookeeper  localhost:2181  --replication-factor 1  --partitions 1  --topic   invoice
+
+
+#  3.6 Open another terminal and check if topic, invoice,  is created:
+
+kafka-topics.sh  --list  --zookeeper  localhost:2181
+
+
+# 3.7   Open another terminal
+#             Start invoice data generator. Pipe the output in kafkacat
+#             and kafkacat publishes it directly to Kafka (topic: invoice)
+
+#           https://docs.confluent.io/current/app-development/kafkacat-usage.html
+#           -t : topic ;   -P : Publishing mode  ; -b : Broker particulars
+
+python  /home/ashok/Documents/fake/fake_invoice_gen.py | kafkacat  -b  localhost:9092  -t  invoice  -P
+
+
+# 1.8 Open another terminal. Consume data from 'invoice' topic.
+#         You should get a continuous stream of data
+
+# Instead, you can try this command also:   kafkacat -b localhost:9092 -t  invoice
+
+kafka-console-consumer.sh  --bootstrap-server  localhost:9092  --topic  invoice   --from-beginning
+
+
+### Step 2 ###### Start yarn ################ ########
+
+# 2.0 Copy data file, userid.csv, to hadoop
+
+
+cd ~
+ hdfs dfs -put /home/ashok/Documents/spark/streaming/4.stream_invoice_data/userid.csv    /user/ashok/data_files
+
+
+
+### Step 3 ###### Start pyspark, work with  stream in batch mode  ########
+
+###  In batch  mode streaming debugging is easier.
+### Note that we do not use start() or awaitTermination()
+### And also use show()
+
+# 3.0 Open terminal (if required). 
+#         Start pyspark as follows. This command downloads
+#         spark libraries (if not already downloaded) and then starts pyspark:
+
+cd ~
+pyspark --packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.3
+
+
+# 3.1 Call requisite library
+
+from pyspark.sql.functions import split
+
+# 3.2  Connect to kafka and read stream in continuous mode
+
+df = spark \
+  .read \
+  .format("kafka") \
+  .option("kafka.bootstrap.servers", "localhost:9092") \
+  .option("subscribe", "invoice") \
+  .load()
+
+
+# 3.3 Print stream schema
+
+df.printSchema()
+
+
+# 3.5 We will now process dataframe, df. At each step of processing
+#        we will call 'df.show()' to see what are the results:
+
+
+# 4.0  Show 'value' column. Note that 'value' in kafka
+#          is bytearray. It needs to be converted/Casted
+#          to read actual messages
+
+df.selectExpr("CAST(value AS STRING)").show()
+
+
+# 4.1  Get a dataframe with  just one column:
+
+data = df.selectExpr("CAST(value AS STRING)")
+
+
+# 4.2 Do splitting of string in each row of column 'value' 
+
+split_col = split(data['value'], ',')
+
+# 4.3 And start parsing new columns, one by one
+
+data = data.withColumn('custid', split_col.getItem(0))               # extract first parsed column
+data = data.withColumn('productid', split_col.getItem(1))      # extract second parsed column
+data = data.withColumn('qty', split_col.getItem(2))        
+data = data.withColumn('datetime', split_col.getItem(3))
+data.show()
+
+# 4.4 Dataframe, data, also contains 'value' column
+#         It is no longer needed. So get only useful columns
+
+cols = ['custid', 'productid', 'qty','datetime']
+data = data.select(cols)
+data.show()
+
+
+## 5  Start data manipulation
+
+# 5.1 Register a streaming DataFrame/Dataset as a temporary view
+#         and then apply SQL commands on it
+
+data.createOrReplaceTempView("newdata")
+
+# 5.2 Read static file (ie not streaming), userid, dataset
+
+URL_of_file  = "hdfs://localhost:9000/user/ashok/data_files/"
+
+
+df_userid =     spark.read.csv( URL_of_file  + "userid.csv" ,
+                                                inferSchema = True, 
+                                                header = True
+                                               )
+
+# 5.3 Show dataset output
+
+df_userid.show()
+
+# 5.4 Create a temporary view of 'df_userid' for SQL queries
+
+df_userid.createOrReplaceTempView("users")
+
+
+# 6    Perform some selection and aggregation using SQL
+#        Multiple streaming aggregations are not supported
+# 	   'fulldata' returns another streaming DF
+#       
+
+fulldata = spark.sql("select u.name , avg(n.qty)  from newdata  n   JOIN users  u  ON  n.custid = u.userid where n.qty > 40 group by u.name ")
+
+fulldata1 = spark.sql("select u.name , avg(n.qty)  from newdata  n   JOIN users  u  ON  n.custid = u.userid group by u.name ")
+
+# 6.1
+fulldata.show()
+fulldata1.show()
+
+fulldata.show()     # Note that aggregate values go on changing as per time
+fulldata1.show()
+
+
+
+# 6.2 Quit pyspark for next experiment:
+
+quit
+
+#################### Now with continuous streaming data #############################
+
+# 7.0  Open another window.
+#         Start pyspark as follows.
+
+cd ~
+pyspark --packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.4.3
+
+# 7.1 After pyspark has started, begin as follows:
+
+# 7.2 Call libraries
+
+#  7.3    Library to generate Spark context, if not generated
+#             whether local  or on hadoop
+
+#from pyspark.context import SparkContext
+
+# 7.4   Library to generate SparkSession, if not created
+#from pyspark.sql.session import SparkSession
+
+# 7.5  Some type to define data schema. Not used in the code.
+#from pyspark.sql.types import StructType
+
+
+# 7.6  Import  split() function
+from pyspark.sql.functions import split
+
+
+# 7.7	 Data format: Order of Fields at the output
+# 	         custmid, itemid, qty, datetime
+
+
+# 7.8  CSV file structure. We do not use it.
+# userSchema = StructType().add("custid", "string").add("itemid", "string").add("qty", "integer").add("datetime", "string")
+
+
+# 8.0 Connect to kafka and read stream in continuous mode
+
+
+df = spark \
+  .readStream \
+  .format("kafka") \
+  .option("kafka.bootstrap.servers", "localhost:9092") \
+  .option("subscribe", "invoice") \
+  .load() 
+
+
+# 8.1 Print schema
+df.printSchema()
+
+# 8.2 Data processing. Remember in streaming command, .show() does not work
+
+# 8.3 Extract just the value column:
+
+data = df.selectExpr("CAST(value AS STRING)")
+
+
+# 8.4 Split column string into its various constituents
+# ref: https://stackoverflow.com/questions/39235704/split-spark-dataframe-string-column-into-multiple-columns
+
+# 8.4.1  Parse column :
+
+split_col = split(data['value'], ',')         # split_col is column-object and not a dataframe
+
+# 8.4.2 Extract individual columns from parsed columns
+#            withColumn() creates new column:
+
+data = data.withColumn('custid', split_col.getItem(0))
+data = data.withColumn('productid', split_col.getItem(1))
+data = data.withColumn('qty', split_col.getItem(2))
+data = data.withColumn('datetime', split_col.getItem(3))
+
+# 9 We do not require 'value' column any more
+#    So unselect it:
+
+cols = ['custid', 'productid', 'qty','datetime']
+data = data.select(cols)
+
+
+# 9.1
+# Register a streaming DataFrame/Dataset as a temporary view
+#    and then apply SQL commands on it
+
+data.createOrReplaceTempView("newdata")
+
+# 9.2 Read static data from hadoop (file:  userid.csv):
+
+URL_of_file  = "/user/ashok/data_files/"
+
+df_userid =     spark.read.csv( URL_of_file  + "userid.csv" ,
+                                                inferSchema = True, 
+                                                header = True
+                                               )
+
+
+# 9.3 Create a temporary view of df_userid for SQL queries
+
+df_userid.createOrReplaceTempView("users")
+
+# 10  Perform inner join, some selection and aggregation using SQL
+#        Multiple streaming aggregations are not supported
+# 	   'fulldata' is returns another streaming DF
+
+fulldata = spark.sql("select u.name , avg(n.qty)  from newdata  n   JOIN users  u ON  n.custid = u.userid where n.qty > 40 group  by  u.name ")
+
+
+# 10.1 Now finally write output  on console
+#          Copy and paste both together else you will have infinite loop
+
+joker = fulldata.writeStream.outputMode("complete").format("console").start()
+joker.awaitTermination()
+
+
+################# END #############################
