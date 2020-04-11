@@ -1,0 +1,221 @@
+0. Show what all databases presently exist in mongodb
+> show dbs;
+admin        0.000GB
+college      0.000GB
+config       0.000GB
+local        0.000GB
+personal     0.000GB
+restaurants  0.004GB
+shop         0.000GB
+textsearch   0.000GB
+---------------------------------------------------------
+1. Create a fresh database 'movies': 
+> use movies;
+switched to db movies
+If database exists,
+#	it is put in use if database does not exist, it will
+#	be created lazily
+> db.getName()
+movies
+------------------------------------------------------------
+2. Create a collection in this database: 'comedy' Schema.
+
+comedy = {
+           name:,
+     	   year:,
+           actors: [],
+           duration,
+           rating : {
+                    "max" :,
+                    "min" :,
+                    "comment":
+                    }
+         }
+-----------------------------------------------------------------------------------
+4. Add following seven json documents to this collection. (Copy and paste into insert command): 
+        
+> use movies;
+switched to db movies
+> db.comedy.insert({name:"Deyne's World", year:1992, city: "Delhi", actors: ["John", "Joker"] , duration : 2.5, rating : {"max" : 3 , "min" : 1, "comment": "I love this comedy. Full of good jokes" } })
+WriteResult({ "nInserted" : 1 })
+> show dbs;
+admin        0.000GB
+college      0.000GB
+config       0.000GB
+local        0.000GB
+movies       0.000GB
+personal     0.000GB
+restaurants  0.004GB
+shop         0.000GB
+textsearch   0.000GB
+> show collections;
+comedy
+---------------------------
+InsertMany:
+
+> db.comedy.insertMany([{name:"See World", year:1998, city: "Fbd", actors: ["Salzsky", "Joker"] , duration : 2.5, rating : {"max" : 5, "min" : 2  , "comment": "Good movie . Worth Seeing" }},
+ {name:'The School of Dan Rock', year:2003,city: "Delhi", actors: ["John", "Madaf"], duration: 3, rating : {"max" : 2.5, "min" : 1.5 , "comment": "Not Good movie"}},
+ {name:"Bill or Ted's Excellent Adventure", year:1989, city: "Fbd", actors : ["Salman", "Ashraf"] , duration : 1.5, rating : {"max" : 3.5, "min" : 1.5 , "comment": "OK. Waste of time" }},
+ {name:"Double Entry", year:2000, city: "Delhi", actors : ["Anil", "Farhan"], duration: 3.2 , rating : {"max" : 5, "min" : 3 , "comment": "Good movie. See again but very long."}},
+ {name:"De Dana Dldan Entry", year:2013, city: "Fbd", actors : ["Anil", "Sandhya"], duration : 1.8, rating : {"max" : 5, "min" : 4 , "comment": "Good movie. Good Acting." } },
+ {name:"Ab joke dekhen adventure", year:2003, city: "Delhi", actors : ["Kapoor", "Sridevi", "Asha"], duration : 1.8 , rating : {"max" : 3, "min" : 1  , "comment": "Bad movie"}},
+ {name:"Deyne's World", year:1992, city: "Delhi", actors: ["John", "Joker"] , duration : 2.5, rating : {"max" : 3 , "min" : 1, "comment": "I love this comedy. Full of good jokes" } }])
+{
+	"acknowledged" : true,
+	"insertedIds" : [
+		ObjectId("5d811bec74ab29355541f225"),
+		ObjectId("5d811bec74ab29355541f226"),
+		ObjectId("5d811bec74ab29355541f227"),
+		ObjectId("5d811bec74ab29355541f228"),
+		ObjectId("5d811bec74ab29355541f229"),
+		ObjectId("5d811bec74ab29355541f22a")
+	]
+}
+> show collections;
+comedy
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+5.1 Queries
+============
+
+i)    Count total number of documents
+> db.comedy.count()
+7
+---------------------------------------------
+ii)    Display only one document
+> db.comedy.findOne()
+{
+	"_id" : ObjectId("5d8123eb556eef88758369f1"),
+	"name" : "See World",
+	"year" : 1998,
+	"city" : "Fbd",
+	"actors" : [
+		"Salzsky",
+		"Joker"
+	],
+	"duration" : 2.5,
+	"rating" : {
+		"max" : 5,
+		"min" : 2,
+		"comment" : "Good movie . Worth Seeing"
+	}
+}
+------------------------------------------------------------
+iii)   Find document where one of the actors is 'Anil'.
+> db.comedy.find({actors : 'Anil'})
+{ "_id" : ObjectId("5d8123eb556eef88758369f4"), "name" : "Double Entry", "year" : 2000, "city" : "Delhi", "actors" : [ "Anil", "Farhan" ], "duration" : 3.2, "rating" : { "max" : 5, "min" : 3, "comment" : "Good movie. See again but very long." } }
+{ "_id" : ObjectId("5d8123eb556eef88758369f5"), "name" : "De Dana Dldan Entry", "year" : 2013, "city" : "Fbd", "actors" : [ "Anil", "Sandhya" ], "duration" : 1.8, "rating" : { "max" : 5, "min" : 4, "comment" : "Good movie. Good Acting." } }
+----------------------------------------------------------------------------------------------------------------------------------------------
+iv)   Find documents where year >= 2000
+> db.comedy.find({year :{$gte:2000 }})
+{ "_id" : ObjectId("5d8123eb556eef88758369f2"), "name" : "The School of Dan Rock", "year" : 2003, "city" : "Delhi", "actors" : [ "John", "Madaf" ], "duration" : 3, "rating" : { "max" : 2.5, "min" : 1.5, "comment" : "Not Good movie" } }
+{ "_id" : ObjectId("5d8123eb556eef88758369f4"), "name" : "Double Entry", "year" : 2000, "city" : "Delhi", "actors" : [ "Anil", "Farhan" ], "duration" : 3.2, "rating" : { "max" : 5, "min" : 3, "comment" : "Good movie. See again but very long." } }
+{ "_id" : ObjectId("5d8123eb556eef88758369f5"), "name" : "De Dana Dldan Entry", "year" : 2013, "city" : "Fbd", "actors" : [ "Anil", "Sandhya" ], "duration" : 1.8, "rating" : { "max" : 5, "min" : 4, "comment" : "Good movie. Good Acting." } }
+{ "_id" : ObjectId("5d8123eb556eef88758369f6"), "name" : "Ab joke dekhen adventure", "year" : 2003, "city" : "Delhi", "actors" : [ "Kapoor", "Sridevi", "Asha" ], "duration" : 1.8, "rating" : { "max" : 3, "min" : 1, "comment" : "Bad movie" } }
+----------------------------------------------------------------------------------------------------------------------------------------------------
+v)    Find documents where year >= 2000 and one of the actors is 'Farhan'.
+> db.comedy.find(
+... 
+...              { $and : [                                                       
+... 
+...                        {year :{$gte:2000}},
+... 
+...                        {"actors" : "Farhan" }
+... 
+...                        ]
+... 
+...               }
+... 
+...              )
+{ "_id" : ObjectId("5d8123eb556eef88758369f4"), "name" : "Double Entry", "year" : 2000, "city" : "Delhi", "actors" : [ "Anil", "Farhan" ], "duration" : 3.2, "rating" : { "max" : 5, "min" : 3, "comment" : "Good movie. See again but very long." } }
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> 
+
+vi)   Find documents where year is NOT Equal to 2003. Also count these documents.
+> db.comedy.find({year :{$ne:2003 }})
+{ "_id" : ObjectId("5d811bec74ab29355541f225"), "name" : "See World", "year" : 1998, "city" : "Fbd", "actors" : [ "Salzsky", "Joker" ], "duration" : 2.5, "rating" : { "max" : 5, "min" : 2, "comment" : "Good movie . Worth Seeing" } }
+{ "_id" : ObjectId("5d811bec74ab29355541f227"), "name" : "Bill or Ted's Excellent Adventure", "year" : 1989, "city" : "Fbd", "actors" : [ "Salman", "Ashraf" ], "duration" : 1.5, "rating" : { "max" : 3.5, "min" : 1.5, "comment" : "OK. Waste of time" } }
+{ "_id" : ObjectId("5d811bec74ab29355541f228"), "name" : "Double Entry", "year" : 2000, "city" : "Delhi", "actors" : [ "Anil", "Farhan" ], "duration" : 3.2, "rating" : { "max" : 5, "min" : 3, "comment" : "Good movie. See again but very long." } }
+{ "_id" : ObjectId("5d811bec74ab29355541f229"), "name" : "De Dana Dldan Entry", "year" : 2013, "city" : "Fbd", "actors" : [ "Anil", "Sandhya" ], "duration" : 1.8, "rating" : { "max" : 5, "min" : 4, "comment" : "Good movie. Good Acting." } }
+{ "_id" : ObjectId("5d811f9274ab29355541f22b"), "name" : "Deyne's World", "year" : 1992, "city" : "Delhi", "actors" : [ "John", "Joker" ], "duration" : 2.5, "rating" : { "max" : 3, "min" : 1, "comment" : "I love this comedy. Full of good jokes" } }
+{ "_id" : ObjectId("5d811fb474ab29355541f22c"), "name" : "Deyne's World", "year" : 1992, "city" : "Delhi", "actors" : [ "John", "Joker" ], "duration" : 2.5, "rating" : { "max" : 3, "min" : 1, "comment" : "I love this comedy. Full of good jokes" } }
+> db.comedy.find({year :{$ne:2003 }}).count()
+6
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+vii)  Perform regular expression search on 'name' where pattern 'ure' appears at the end of name field
+> db.comedy.find({name: /ure$/})
+{ "_id" : ObjectId("5d811bec74ab29355541f227"), "name" : "Bill or Ted's Excellent Adventure", "year" : 1989, "city" : "Fbd", "actors" : [ "Salman", "Ashraf" ], "duration" : 1.5, "rating" : { "max" : 3.5, "min" : 1.5, "comment" : "OK. Waste of time" } }
+{ "_id" : ObjectId("5d811bec74ab29355541f22a"), "name" : "Ab joke dekhen adventure", "year" : 2003, "city" : "Delhi", "actors" : [ "Kapoor", "Sridevi", "Asha" ], "duration" : 1.8, "rating" : { "max" : 3, "min" : 1, "comment" : "Bad movie" } }
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+viii) Perform regular expression search on 'name' where pattern 'Dan' appears anywhere in between the string
+> db.comedy.find({name: /Dan/})
+{ "_id" : ObjectId("5d811bec74ab29355541f226"), "name" : "The School of Dan Rock", "year" : 2003, "city" : "Delhi", "actors" : [ "John", "Madaf" ], "duration" : 3, "rating" : { "max" : 2.5, "min" : 1.5, "comment" : "Not Good movie" } }
+{ "_id" : ObjectId("5d811bec74ab29355541f229"), "name" : "De Dana Dldan Entry", "year" : 2013, "city" : "Fbd", "actors" : [ "Anil", "Sandhya" ], "duration" : 1.8, "rating" : { "max" : 5, "min" : 4, "comment" : "Good movie. Good Acting." } }
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ix)  Perform regular expression search on 'name' where pattern 'De' appears at starting and 'ld' appears at the end of 'name' field
+> db.comedy.find({ "name" : /^De.*ld$/ } )
+{ "_id" : ObjectId("5d811f9274ab29355541f22b"), "name" : "Deyne's World", "year" : 1992, "city" : "Delhi", "actors" : [ "John", "Joker" ], "duration" : 2.5, "rating" : { "max" : 3, "min" : 1, "comment" : "I love this comedy. Full of good jokes" } }
+{ "_id" : ObjectId("5d811fb474ab29355541f22c"), "name" : "Deyne's World", "year" : 1992, "city" : "Delhi", "actors" : [ "John", "Joker" ], "duration" : 2.5, "rating" : { "max" : 3, "min" : 1, "comment" : "I love this comedy. Full of good jokes" } }
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+x)   Delete document where one of the actors is 'Anil'
+> db.comedy.deleteOne({actors:'Anil'})
+{ "acknowledged" : true, "deletedCount" : 1 }
+> db.comedy.count()
+6
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> 
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+5.2 Aggregation
+================
+xi)   For the parttern above, find average duration, grouped city wise
+<<<<<<<<<<<<<< Question not complete. No Pattern found <<<<<<<<<<<<<<<<<
+
+xii)  For the pattern above find std deviation of duration grouped city wise
+<<<<<<<<<<<<<< Question not complete. No Pattern found <<<<<<<<<<<<<<<<<
+=====================================================================================
+xiii) Find average duration of movies for year >=2000
+> db.comedy.aggregate ( [
+...                           {$match : {year : {$gte:2000 }}},
+...                           {$group:{"_id":{"MovieYr":"$year", AvgDuration : {"$avg" : "$duration"}}}}
+...               ]
+...             )
+{ "_id" : { "MovieYr" : 2003, "AvgDuration" : 3 } }
+{ "_id" : { "MovieYr" : 2003, "AvgDuration" : 1.8 } }
+{ "_id" : { "MovieYr" : 2000, "AvgDuration" : 3.2 } }
+{ "_id" : { "MovieYr" : 2013, "AvgDuration" : 1.8 } }
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+xiv) Find max duration of comedy-movies where year >=2000 but show only 'name' field
+> db.comedy.aggregate ( [
+...                             {$match : {year : {$gte:2000 }}},
+...                             {$group:{"_id":{"MovieYr":"$year", AvgDuration : {"$avg" : "$duration"}}}},
+...                             {$project : { name: 1 }}
+...   
+...                     ] )
+{ "_id" : { "MovieYr" : 2000, "AvgDuration" : 3.2 } }
+{ "_id" : { "MovieYr" : 2013, "AvgDuration" : 1.8 } }
+{ "_id" : { "MovieYr" : 2003, "AvgDuration" : 3 } }
+{ "_id" : { "MovieYr" : 2003, "AvgDuration" : 1.8 } }
+
+              
+xv)  Find overall average duration of comedy-movies in all records.
+> db.comedy.aggregate ( [
+... {$group:{_id:null, AvgDuration : {"$avg" : "$duration"}}},
+...                   ])
+{ "_id" : null, "AvgDuration" : 2.3285714285714287 }
+)
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+6. Finally drop collection: 'comedy'
+use movies
+switched to db movies
+> show collections
+comedy
+> db.comedy.drop()
+true
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> 
+7. Drop database 'movies'
+> db.dropDatabase()
+{ "dropped" : "movies", "ok" : 1 }
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
